@@ -4,7 +4,7 @@ from langchain_community.embeddings import OpenAIEmbeddings
 
 from ensemble import ensemble_retriever_from_docs
 from full_chain import create_full_chain, ask_question
-from local_loader import load_txt_files
+from local_loader import load_txt_files, get_document_text_2
 
 st.set_page_config(page_title="LangChain & Streamlit RAG")
 st.title("LangChain & Streamlit RAG")
@@ -29,15 +29,20 @@ def show_ui(qa, prompt_to_user="How may I help you?"):
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                response = ask_question(qa, prompt)
+                openai_api_key = get_secret_or_input('OPENAI_API_KEY', "OpenAI API key",
+                                                 info_link="https://platform.openai.com/account/api-keys")
+                print('------ before asking question -----')
+                response = ask_question(qa, prompt, openai_api_key)
                 st.markdown(response.content)
+                print('------ after asking question -----')
         message = {"role": "assistant", "content": response.content}
         st.session_state.messages.append(message)
 
 
 @st.cache_resource
 def get_retriever(openai_api_key=None):
-    docs = load_txt_files()
+    docs = get_document_text_2("data")
+
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key, model="text-embedding-3-small")
     return ensemble_retriever_from_docs(docs, embeddings=embeddings)
 

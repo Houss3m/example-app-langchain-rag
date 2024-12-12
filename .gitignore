@@ -6,3 +6,4 @@ __pycache__/
 .idea/
 .python-version
 store/
+/streamlit_app_env
