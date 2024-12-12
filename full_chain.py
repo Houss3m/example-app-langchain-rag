@@ -33,35 +33,9 @@ def create_full_chain(retriever, openai_api_key=None, chat_memory=ChatMessageHis
     chain = create_memory_chain(model, rag_chain, chat_memory)
     return chain
 
-
-def ask_question(chain, query, openai_api_key=None):
+def paraphraser_model(query, response, openai_api_key=None):
     client = OpenAI(api_key=openai_api_key)
-
-    print("inside ask question")
-    print("before chain invoke")
-    response = chain.invoke(
-        {"question": query},
-        config={"configurable": {"session_id": "foo"}}
-    )
-    print("after chain invoke")
     system_prompt = f"""
-    if you see that the response is not efficient to the query, you can change it but keeping the same tone. and you may use the below response as an addtional context.
-    for example the user may say thanks, but the RAG model won't answer that in a conversational tone, you should engage and change the whole response.
-    the users query: {query}
-    
-    You are a paraphraser and a tone cloning assistant. below are the instructions you should follow to refine the answer and mimic Cujo's tone. 
-
-    IMPORTANT: YOU MUST PARAPHRASE THE ANSWER BASED ON THE INSTRUCTIONS MENTIONED BELOW:
-
-    Your tone should reflect the inspiring and disciplined approach of Robert "Cujo" Teschner, emphasizing clarity, alignment, and motivation. You use his characteristic style of motivating teams and aligning them to meaningful goals.
-
-    "You are an inspiring and disciplined conversational partner, embodying the motivational and structured tone of Robert “Cujo” Teschner. Your role is to help users apply leadership and planning frameworks effectively while ensuring clarity, alignment, and actionable insights. Speak with energy and focus, balancing encouragement with strategic rigor."
-
-    Some observed Elements of the Tone of Robert “Cujo” Teschner:
-    - Conversational Approach: Starts with greetings and informal yet respectful language.
-    - Motivational Language: Focus on empowering and encouraging leaders to achieve their goals.
-    - Structured Communication: Provides clear points and actionable takeaways, ensuring clarity and purpose.
-    - Warm and Inclusive: Uses inclusive phrases like "friends" to build rapport with the audience. 
 
     if you see that the response is not efficient to the query, you can change it but keeping the same tone. and you may use the below response as an addtional context.
     for example the user may say thanks, but the RAG model won't answer that in a conversational tone, you should engage and change the whole response.
@@ -81,11 +55,84 @@ def ask_question(chain, query, openai_api_key=None):
             }
         ]
     )
+    return completion
+    
+def convo_model(query, openai_api_key=None):
+    client = OpenAI(api_key=openai_api_key)
+    system_prompt="""
+    You are a conversational agent, that replied with Cujo's tone, here are some instrucions about Cujo's tone below:
+    Some observed Elements of the Tone of Robert “Cujo” Teschner:
+    - Conversational Approach: Starts with greetings and informal yet respectful language.
+    - Motivational Language: Focus on empowering and encouraging leaders to achieve their goals.
+    - Structured Communication: Provides clear points and actionable takeaways, ensuring clarity and purpose.
+    - Warm and Inclusive: Uses inclusive phrases like "friends" to build rapport with the audience. 
+    you should answer the user's query: {query}
+    """
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": query
+            }
+        ]
+    )
+    return completion
 
-    print(response.content)
-    print("after rephraser")
+def checker_model(query, openai_api_key=None):
+    class Question_eval(BaseModel):
+        eval: int
+    
+    client = OpenAI(api_key=openai_api_key)
+    # Simulated client API call
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4o-mini-2024-07-18",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Given the following query, classify the query if it is generic conversational or not. "
+                    "1. if the query is classified as a generic conversational query that doesn't require any additional context or a RAG model, return the number 1."
+                    "0. if the query is a question that requires additional context and the use of a RAG model, return the number 0."
+                    "The final answer should be an integer."
+                    "for example: the query is: Thank you for your help."
+                    "you should return this only: 1"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Here is the user query that you should classify: {query}",
+            },
+        ],
+        temperature=0,
+        response_format=Question_eval,
+    )
 
-    return completion.choices[0].message
+    
+
+def ask_question(chain, query, openai_api_key=None):
+    
+    result=checker_model(query, openai_api_key)
+    
+    if result != None:
+        if result==0:
+            response = chain.invoke(
+                {"question": query},
+                config={"configurable": {"session_id": "foo"}}
+            )
+    
+            completion=paraphraser_model(query, response, openai_api_key)
+    
+
+            print(response.content)
+
+
+            return completion.choices[0].message
+        elif result==1:
+            completion=convo_model(query,openai_api_key)
+            return completion.choices[0].message
+
 
 
 def main():
